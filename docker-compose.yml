@@ -1,0 +1,215 @@
+version: '3.8'
+
+services:
+  # Main application
+  spotify-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-production}
+    container_name: spotify-analysis-app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_DEBUG=${FLASK_DEBUG:-0}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+      - DATABASE_URL=postgresql://user:password@db:5432/spotify_analysis
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - spotify_uploads:/app/data/uploads
+    depends_on:
+      - db
+      - redis
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Database
+  db:
+    image: postgres:14-alpine
+    container_name: spotify-analysis-db
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=spotify_analysis
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d spotify_analysis"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: spotify-analysis-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: spotify-analysis-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./static:/var/www/static
+    depends_on:
+      - spotify-analysis
+    networks:
+      - spotify-network
+    restart: unless-stopped
+
+  # Jupyter notebook for data exploration
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: spotify-analysis-jupyter
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - jupyter_data:/root/.jupyter
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # MLflow for experiment tracking
+  mlflow:
+    image: python:3.10-slim
+    container_name: spotify-analysis-mlflow
+    command: bash -c "pip install mlflow && mlflow server --host 0.0.0.0 --port 5001 --backend-store-uri postgresql://user:password@db:5432/mlflow_db --default-artifact-root /mlruns"
+    ports:
+      - "5001:5001"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://user:password@db:5432/mlflow_db
+    volumes:
+      - mlflow_data:/mlruns
+    depends_on:
+      - db
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    profiles:
+      - mlops
+
+  # Streamlit dashboard
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: spotify-analysis-streamlit
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    profiles:
+      - dashboard
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: spotify-analysis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: spotify-analysis-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - spotify-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# Networks
+networks:
+  spotify-network:
+    driver: bridge
+
+# Volumes
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  spotify_uploads:
+    driver: local
+  jupyter_data:
+    driver: local
+  mlflow_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
