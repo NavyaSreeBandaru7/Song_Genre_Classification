@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-Setup script for Spotify Music Analysis Platform
-===============================================
-
-Professional package setup for easy installation and distribution.
-
-Author: Data Science Team
-Version: 1.2.0
-"""
-
 from setuptools import setup, find_packages
 import os
 import re
@@ -53,4 +42,76 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        "Topic :: Scientific/Engineering :: Information Analysis
+        "Topic :: Scientific/Engineering :: Information Analysis",
+        "Topic :: Multimedia :: Sound/Audio :: Analysis",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Operating System :: OS Independent",
+    ],
+    python_requires=">=3.8",
+    install_requires=get_requirements(),
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-cov>=3.0.0",
+            "black>=22.0.0",
+            "flake8>=4.0.0",
+            "mypy>=0.950",
+            "pre-commit>=2.17.0",
+            "sphinx>=4.5.0",
+            "sphinx-rtd-theme>=1.0.0",
+        ],
+        "api": [
+            "spotipy>=2.20.0",
+            "requests>=2.28.0",
+            "python-dotenv>=0.19.0",
+        ],
+        "gpu": [
+            "tensorflow-gpu>=2.8.0",
+            "torch>=1.11.0",
+            "cupy>=10.0.0",
+        ],
+        "all": [
+            "pytest>=7.0.0",
+            "pytest-cov>=3.0.0",
+            "black>=22.0.0",
+            "flake8>=4.0.0",
+            "mypy>=0.950",
+            "pre-commit>=2.17.0",
+            "sphinx>=4.5.0",
+            "sphinx-rtd-theme>=1.0.0",
+            "spotipy>=2.20.0",
+            "requests>=2.28.0",
+            "python-dotenv>=0.19.0",
+            "tensorflow>=2.8.0",
+            "torch>=1.11.0",
+        ]
+    },
+    entry_points={
+        "console_scripts": [
+            "spotify-analysis=spotify_analysis.cli:main",
+            "spotify-web=spotify_analysis.app:run_app",
+            "spotify-dashboard=spotify_analysis.dashboard:run_dashboard",
+        ],
+    },
+    include_package_data=True,
+    package_data={
+        "spotify_analysis": [
+            "templates/*.html",
+            "static/css/*.css",
+            "static/js/*.js",
+            "static/images/*",
+            "data/sample/*",
+        ],
+    },
+    keywords=[
+        "spotify", "music", "data-analysis", "machine-learning", 
+        "nlp", "visualization", "audio-features", "clustering",
+        "classification", "data-science", "ai", "analytics"
+    ],
+    zip_safe=False,
+)
